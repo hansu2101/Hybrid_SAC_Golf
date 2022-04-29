@@ -21,3 +21,4 @@ class HeuristicAgent:
             club = np.random.randint(11, 20)
 
         return np.random.uniform(-35, 35, size=20), club
+    ##
