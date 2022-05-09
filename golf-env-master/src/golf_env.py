@@ -55,10 +55,10 @@ class GolfEnv(metaclass=ABCMeta):
             # PIXL   NAME       K_DIST  K_DEV   ON_LAND                     TERM    RWRD
             -1: ('TEE', 1.0, 1.0, self.OnLandAction.NONE, False, lambda d: -1),
             70: ('FAREWAY', 1.0, 1.0, self.OnLandAction.NONE, False, lambda d: -1),
-            80: ('GREEN', 1.0, 1.0, self.OnLandAction.NONE, True, lambda d: self.__green_reward_func(d)),
-            50: ('SAND', 0.6, 1.5, self.OnLandAction.NONE, False, lambda d: -1),
+            80: ('GREEN', 1.0, 1.0, self.OnLandAction.NONE, True, lambda d: 3+self.__green_reward_func(d)),
+            50: ('SAND', 0.6, 1.5, self.OnLandAction.NONE, False, lambda d: -1.3),
             5: ('WATER', 0.4, 1.0, self.OnLandAction.SHORE, False, lambda d: -2),
-            55: ('ROUGH', 0.8, 1.5, self.OnLandAction.NONE, False, lambda d: -1),
+            55: ('ROUGH', 0.8, 1.5, self.OnLandAction.NONE, False, lambda d: -1.3),
             0: ('OB', 1.0, 1.0, self.OnLandAction.ROLLBACK, False, lambda d: -2),
         }
         # self.__area_info = {

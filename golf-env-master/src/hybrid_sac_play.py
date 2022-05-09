@@ -1,6 +1,6 @@
 import gym
-#from hybrid_sac_learn import SACagent
-from golf_hsac_learn import SACagent
+from hybrid_sac_learn import SACagent
+# from golf_hsac_learn import SACagent
 from golf_env_discrete import GolfEnvDiscrete
 import tensorflow as tf
 import cv2
@@ -16,16 +16,21 @@ def main():
 
     time = 0
     state = env.reset()
+    #state = env.reset_randomized()
 
     while True:
 
         state_img, state_dist = state[0], state[1]
-        state_img = np.reshape(cv2.resize(state_img, (84, 84), cv2.INTER_NEAREST), (84, 84)).astype(np.float32)
-        state_imgs = np.stack((state_img, state_img, state_img), axis=2)
+        state_img = np.reshape(cv2.resize(state_img, (84, 84), cv2.INTER_NEAREST), (84, 84)).astype(np.float32)/100.0
+        state_img = np.stack((state_img, state_img, state_img), axis=2)
         state_dist = np.array(state_dist.reshape(1,))
 
-        action_c, action_d = agent.get_action(tf.convert_to_tensor([state_imgs], dtype=tf.float32),
-                                              tf.convert_to_tensor([state_dist], dtype=tf.float32))
+        # action_c, action_d = agent.get_action(tf.convert_to_tensor([state_img], dtype=tf.float32),
+        #                                       tf.convert_to_tensor([state_dist], dtype=tf.float32))
+
+        mu, _, ac_d = agent.actor(tf.convert_to_tensor([state_img], dtype=tf.float32), tf.convert_to_tensor([state_dist], dtype=tf.float32))
+        action_c, action_d, _, _, _ = agent.actor.sample_normal(mu, 0, ac_d)
+        action_c, action_d = action_c.numpy()[0], action_d.numpy()[0]
 
         print([action_d, action_c])
 

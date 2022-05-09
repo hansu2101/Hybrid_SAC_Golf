@@ -3,68 +3,84 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import cv2
+import torch
 
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Layer, Input, Dense, Lambda, concatenate, Conv2D, MaxPooling2D, Flatten,\
+                                    BatchNormalization, Conv2D, Activation, GlobalAveragePooling2D, ZeroPadding2D, Add
+from tensorflow.keras.optimizers import Adam
 import tensorflow as tf
 import tensorflow_probability as tfp
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Dense, Lambda, concatenate, Conv2D, MaxPooling2D, Flatten, BatchNormalization, GlobalAveragePooling2D
-from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.initializers import RandomUniform
-# from classification_models.keras import Classifiers
+import torch.distributions as td
+import cv2
 
-from replaybuffer import ReplayBuffer
 from heuristic_agent import HeuristicAgent
+from replaybuffer import ReplayBuffer
+from Resnet50 import res1_layer, res2_layer, res3_layer, res4_layer, res5_layer
 
-from keras.applications.efficientnet import EfficientNetB0
+from tensorflow.keras.applications.resnet50 import ResNet50
+from tensorflow.keras.applications.efficientnet import EfficientNetB0, EfficientNetB1
 
+from tensorflow.keras.preprocessing import image
+from tensorflow.keras.applications.resnet50 import preprocess_input
 
-# from Resnet_50 import res5_layer, res4_layer, res3_layer, res2_layer, res1_layer
-#
-# from tensorflow.keras.applications.resnet50 import ResNet50
-# from tensorflow.keras.preprocessing import image
-# from tensorflow.keras.applications.resnet50 import preprocess_input
-# from tf2_resnets import models
-
-
+# actor network
 class Actor(Model):
 
-    def __init__(self, action_dim, action_bound):
+    def __init__(self, state_img_dim, action_dim, action_bound):
         super(Actor, self).__init__()
-
+        self.state_img_dim = state_img_dim
         self.action_dim = action_dim
         self.action_bound = action_bound
         self.std_bound = [1e-2, 1.0]  # std bound
 
-        self.e_net = EfficientNetB0(include_top=False, weights=None)
+        # self.res1 = res1_layer()
+        # self.res2 = res2_layer()
+        # self.res3 = res3_layer()
+        # self.res4 = res4_layer()
+        # self.res5 = res5_layer()
+        #
+        # self.avp = GlobalAveragePooling2D()
+
+        self.model = EfficientNetB0(include_top = False, weights=None, input_shape=self.state_img_dim)
         self.flat = Flatten()
-
         self.x1 = Dense(400, activation='relu')
-        self.x2 = Dense(20, activation='relu')
+        self.x2 = Dense(32, activation='relu')
 
-        self.h1 = Dense(80, activation='relu')
-        self.h2 = Dense(20, activation='relu')
-        self.mu = Dense(action_dim, activation='tanh', kernel_initializer=RandomUniform(-1e-3, 1e-3))
-        self.std = Dense(action_dim, activation='softplus', kernel_initializer=RandomUniform(-1e-3, 1e-3))
-        self.ac_d = Dense(action_dim, activation=None, kernel_initializer=RandomUniform(-1e-3, 1e-3))
+        self.h1 = Dense(300, activation='relu')
+        # self.h2 = Dense(16, activation='relu')
+
+        self.mu = Dense(action_dim, activation='tanh',kernel_initializer=RandomUniform(-1e-3, 1e-3))
+        self.std = Dense(action_dim, activation='softplus',kernel_initializer=RandomUniform(-1e-3, 1e-3))
+        self.ac_d = Dense(action_dim, activation=None,kernel_initializer=RandomUniform(-1e-3, 1e-3))
 
 
     def call(self, state_img, state_dist):
 
-        x1 = self.e_net(state_img)
+
+        # x = self.res1(state_img)
+        # x = self.res2(x)
+        # x = self.res3(x)
+        # x = self.res4(x)
+        # x = self.res5(x)
+        # x = self.avp(x)
+        x1 = self.model(state_img)
         x1 = self.flat(x1)
         x1 = self.x1(x1)
         x2 = self.x2(state_dist)
+
         h = concatenate([x1, x2], axis=-1)
 
         x = self.h1(h)
-        x = self.h2(x)
+        # x = self.h2(x)
+
         mu = self.mu(x)
         std = self.std(x)
         ac_d = self.ac_d(x)
 
         # Scale output to [-action_bound, action_bound]
-        mu = Lambda(lambda x : x * self.action_bound)(mu)
+        mu = Lambda(lambda x: x * self.action_bound)(mu)
 
         # clipping std
         std = tf.clip_by_value(std, self.std_bound[0], self.std_bound[1])
@@ -72,6 +88,10 @@ class Actor(Model):
         return mu, std, ac_d
 
     def sample_normal(self, mu, std, ac_d):
+
+        if np.isnan(mu.numpy()[0].all()) or np.isnan(std.numpy()[0].all()) or np.isnan(ac_d.numpy()[0].all()):
+            print('IS NAN')
+            exit(0)
 
         normal_prob = tfp.distributions.Normal(mu, std)
         action_c = normal_prob.sample()
@@ -83,23 +103,24 @@ class Actor(Model):
         prob_d = tf.nn.softmax(dist.logits)
         log_pdf_d = tf.math.log(prob_d + (1e-8))
 
+
         return action_c, action_d, log_pdf_c, log_pdf_d, prob_d
 
 # critic network
 class Critic(Model):
 
-    def __init__(self,action_dim):
+    def __init__(self,action_dim, state_img_dim):
         super(Critic, self).__init__()
 
-        self.e_net = EfficientNetB0(include_top=False, weights=None)
+        self.state_img_dim = state_img_dim
+        self.model = EfficientNetB0(include_top=False, weights=None, input_shape=self.state_img_dim)
         self.flat = Flatten()
         self.x1 = Dense(400, activation='relu')
-        self.x2 = Dense(20, activation='relu')
-        self.a1 = Dense(20, activation='relu')
-
-        self.h1 = Dense(80, activation='relu')
-        self.h2 = Dense(20, activation='relu')
-        self.q = Dense(action_dim, activation='linear')
+        self.x2 = Dense(32, activation='relu')
+        self.a1 = Dense(action_dim, activation='relu')
+        self.h1 = Dense(300, activation='relu')
+        # self.h2 = Dense(16, activation='relu')
+        self.q = Dense(action_dim, activation='linear', kernel_initializer=RandomUniform(-1e-3, 1e-3))
 
 
     def call(self, state_action):
@@ -107,14 +128,15 @@ class Critic(Model):
         state_dist = state_action[1]
         action = state_action[2]
 
-        x1 = self.e_net(state_img)
+        x1 = self.model(state_img)
         x1 = self.flat(x1)
+        x1 = self.x1(x1)
         x2 = self.x2(state_dist)
         a = self.a1(action)
 
         h = concatenate([x1, x2, a], axis=-1)
         x = self.h1(h)
-        x = self.h2(x)
+        # x = self.h3(x)
         q = self.q(x)
         return q
 
@@ -126,7 +148,7 @@ class SACagent(object):
         ## hyperparameters
         self.GAMMA = 0.99
         self.BATCH_SIZE = 64
-        self.BUFFER_SIZE = 40000
+        self.BUFFER_SIZE = 20000
         self.ACTOR_LEARNING_RATE = 0.0001
         self.CRITIC_LEARNING_RATE = 0.001
         self.TAU = 0.001
@@ -135,47 +157,61 @@ class SACagent(object):
 
         self.env = env
         # get state dimension
-        self.state_dim_img = (84, 84, 3)
-        self.state_dim_dist = (1,)
+        self.state_img_dim = (80, 80, 3)
         # get action dimension
         self.action_dim = 20
         # get action bound
-        self.action_bound = 35
+        self.action_bound_angle = 60
 
         ## create actor and critic networks
-        self.actor = Actor(self.action_dim, self.action_bound)
+        self.actor = Actor(self.state_img_dim, self.action_dim, self.action_bound_angle)
+        # self.actor.build(input_shape=(None, 60, 60, 1))
 
-        self.critic = Critic(self.action_dim)
-        self.target_critic = Critic(self.action_dim)
+        self.critic = Critic(self.action_dim, self.state_img_dim)
+        self.target_critic = Critic(self.action_dim, self.state_img_dim)
 
-
-        state_in_img = Input(self.state_dim_img)
-        state_in_dist = Input(self.state_dim_dist)
-        action_in = Input(self.action_dim)
-
-        self.actor(state_in_img, state_in_dist)
-        self.critic([state_in_img, state_in_dist, action_in])
-        self.target_critic([state_in_img, state_in_dist, action_in])
+        state_img_in = Input(self.state_img_dim)
+        state_dist_in = Input((1,))
+        action_in = Input((self.action_dim,))
+        self.actor(state_img_in, state_dist_in)
+        self.critic([state_img_in,state_dist_in, action_in])
+        self.target_critic([state_img_in,state_dist_in, action_in])
 
         self.actor.summary()
         self.critic.summary()
 
+        # optimizer
         self.actor_opt = Adam(self.ACTOR_LEARNING_RATE)
         self.critic_opt = Adam(self.CRITIC_LEARNING_RATE)
 
         ## initialize replay buffer
         self.buffer = ReplayBuffer(self.BUFFER_SIZE)
 
+        ## heuristic_agent
         self.hagent = HeuristicAgent()
 
         # save the results
         self.save_epi_reward = []
+
+
+
+        # target_entropy = -0.25
+        # log_alpha = tf.zeros(1, requires_grad=True)
+        # alpha = log_alpha.exp().detach()
+        # self.a_optimizer = Adam([log_alpha], lr=1e-4)
+        #
+        # # target_entropy_d = -0.98 * np.log(1/out_d)
+        # target_entropy_d = 0.25
+        # log_alpha_d = tf.zeros(1, requires_grad=True)
+        # alpha_d = log_alpha_d.exp().detach()
+        # self.a_d_optimizer = Adam([log_alpha_d], lr=1e-4)
 
     ## actor policy
     def get_action(self, state_img, state_dist):
         mu, std, ac_d = self.actor(state_img, state_dist)
         action_c, action_d, _ ,_ ,_ = self.actor.sample_normal(mu, std, ac_d)
         return action_c.numpy()[0], action_d.numpy()[0]
+
 
 
     ## transfer actor weights to target actor with a tau
@@ -205,7 +241,6 @@ class SACagent(object):
         self.critic_opt.apply_gradients(zip(grads, self.critic.trainable_variables))
 
 
-
     ## train the actor network
     def actor_learn(self, states_img, states_dist):
         with tf.GradientTape() as tape:
@@ -223,6 +258,7 @@ class SACagent(object):
         grads = tape.gradient(loss, self.actor.trainable_variables)
         self.actor_opt.apply_gradients(zip(grads, self.actor.trainable_variables))
 
+
     ## computing soft Q target
     def q_target(self, rewards, q_values, dones):
         q_values_Sum = q_values.sum(1)
@@ -237,14 +273,14 @@ class SACagent(object):
 
     ## load actor weights
     def load_weights(self, path):
+        self.actor.load_weights(path + 'ressactor_3.h5')
+        self.critic.load_weights(path + 'resscritic_3.h5')
 
-        self.actor.load_weights(path + 'actor_e_net.h5')
-        self.critic.load_weights(path + 'critic_e_net.h5')
 
+    ## train the agent
     def train(self, max_episode_num):
 
         # initial transfer model weights to target model network
-        self.load_weights('../save_weights/')
         self.update_target_network(1.0)
 
         for ep in range(int(max_episode_num)):
@@ -252,17 +288,17 @@ class SACagent(object):
             # reset episode
             time, episode_reward, done = 0, 0, False
             # reset the environment and observe the first state
-            if ep < 7000 :
+            if ep < 4500 :
                 state = self.env.reset_randomized(max_timestep=100)
 
             else :
-                state = self.env.reset()
+                state = self.env.reset_limset(max_timestep=100)
 
             while not done:
                 # visualize the environment
 
                 state_img, state_dist = state[0], state[1]
-                state_img = np.reshape(cv2.resize(state_img,(84, 84),cv2.INTER_NEAREST), (84, 84)).astype(np.float32) / 100.0
+                state_img = np.reshape(cv2.resize(state_img,(80, 80),cv2.INTER_NEAREST), (80, 80)).astype(np.float32) / 100.0
                 state_img = np.stack((state_img, state_img, state_img), axis=2)
                 state_dist = np.reshape(state_dist, (1, ))
 
@@ -273,7 +309,7 @@ class SACagent(object):
 
                 else:
                     action_c, action_d = self.hagent.step(state_dist)
-                    # print("heuristic", action_c[action_d], action_d, action_c)
+                    print("heuristic", action_c[action_d], action_d, action_c)
 
                 if time % 10 == 0 :
                     print('time = ', time , action_d,  action_c[action_d])
@@ -283,7 +319,7 @@ class SACagent(object):
 
 
                 next_state_img, next_state_dist = next_state[0], next_state[1]
-                next_state_img = np.reshape(cv2.resize(next_state_img,(84, 84),cv2.INTER_NEAREST), (84, 84)).astype(np.float32) / 100.0
+                next_state_img = np.reshape(cv2.resize(next_state_img,(80, 80),cv2.INTER_NEAREST), (80, 80)).astype(np.float32) / 100.0
                 next_state_img = np.stack((next_state_img, next_state_img, next_state_img), axis=2)
                 next_state_dist = np.reshape(next_state_dist, (1,))
 
@@ -295,7 +331,8 @@ class SACagent(object):
                 if self.buffer.buffer_count() > 64:  # start train after buffer has some amounts
 
                     # sample transitions from replay buffer
-                    states_img, states_dist, sactions_d, sactions_c, rewards, next_states_img, next_states_dist, dones = self.buffer.sample_batch(self.BATCH_SIZE)
+                    states_img, states_dist, sactions_d, sactions_c, \
+                    rewards, next_states_img, next_states_dist, dones = self.buffer.sample_batch(self.BATCH_SIZE)
 
                     # predict target soft Q-values
                     next_mu, next_std, next_ac_d = self.actor(tf.convert_to_tensor(next_states_img, dtype=tf.float32),
@@ -334,8 +371,8 @@ class SACagent(object):
 
             ## save weights every episode
             #print('Now save')
-            self.actor.save_weights("../save_weights/actor_e_net.h5")
-            self.critic.save_weights("../save_weights/critic_e_net.h5")
+            self.actor.save_weights("../save_weights/ressactor_3.h5")
+            self.critic.save_weights("../save_weights/resscritic_3.h5")
             # self.env.plot()
 
 
@@ -343,11 +380,7 @@ class SACagent(object):
         print(self.save_epi_reward)
 
 
-    #     np.savetxt('../save_weights/epi_reward_sac.txt', self.save_epi_reward)
-    #     # print(self.save_epi_reward)
-    #
-    #
-    # ## save them to file if done
-    # def plot_result(self):
-    #     plt.plot(self.save_epi_reward)
-    #     plt.show()
+    ## save them to file if done
+    def plot_result(self):
+        plt.plot(self.save_epi_reward)
+        plt.show()

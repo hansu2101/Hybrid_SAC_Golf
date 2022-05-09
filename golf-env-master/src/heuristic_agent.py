@@ -7,18 +7,20 @@ class HeuristicAgent:
         pass
 
     def step(self, state):
-        distance = state
+        # distance = state
 
-        if distance > 300:
-            club = np.random.randint(0, 5)
-        elif distance > 200:
-            club = np.random.randint(5, 7)
-        elif distance > 100:
-            club = np.random.randint(1, 20)
-        elif distance > 70:
-            club = np.random.randint(10, 20)
-        else:
-            club = np.random.randint(11, 20)
+        # if distance > 300:
+        #     club = np.random.randint(0, 5)
+        # elif distance > 200:
+        #     club = np.random.randint(5, 7)
+        # elif distance > 100:
+        #     club = np.random.randint(1, 20)
+        # elif distance > 70:
+        #     club = np.random.randint(10, 20)
+        # else:
+        #     club = np.random.randint(11, 20)
+
+        club = np.random.randint(0, 20)
 
         return np.random.uniform(-35, 35, size=20), club
     ##
