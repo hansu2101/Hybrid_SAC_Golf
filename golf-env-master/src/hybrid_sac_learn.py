@@ -1,30 +1,15 @@
-# SAC learn (tf2 subclassing version)
-# coded by St.Watermelon
-
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
-
 import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Dense, Lambda, concatenate, Conv2D, MaxPooling2D, Flatten, BatchNormalization, GlobalAveragePooling2D
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.initializers import RandomUniform
-# from classification_models.keras import Classifiers
-
+from keras.applications.efficientnet import EfficientNetB0
 from replaybuffer import ReplayBuffer
 from heuristic_agent import HeuristicAgent
-
-from keras.applications.efficientnet import EfficientNetB0
-
-
-# from Resnet_50 import res5_layer, res4_layer, res3_layer, res2_layer, res1_layer
-#
-# from tensorflow.keras.applications.resnet50 import ResNet50
-# from tensorflow.keras.preprocessing import image
-# from tensorflow.keras.applications.resnet50 import preprocess_input
-# from tf2_resnets import models
 
 
 class Actor(Model):
@@ -34,7 +19,7 @@ class Actor(Model):
 
         self.action_dim = action_dim
         self.action_bound = action_bound
-        self.std_bound = [1e-2, 1.0]  # std bound
+        self.std_bound = [1e-2, 1.0]
 
         self.e_net = EfficientNetB0(include_top=False, weights=None)
         self.flat = Flatten()
@@ -63,10 +48,8 @@ class Actor(Model):
         std = self.std(x)
         ac_d = self.ac_d(x)
 
-        # Scale output to [-action_bound, action_bound]
         mu = Lambda(lambda x : x * self.action_bound)(mu)
 
-        # clipping std
         std = tf.clip_by_value(std, self.std_bound[0], self.std_bound[1])
 
         return mu, std, ac_d
@@ -163,7 +146,6 @@ class SACagent(object):
         self.actor_opt = Adam(self.ACTOR_LEARNING_RATE)
         self.critic_opt = Adam(self.CRITIC_LEARNING_RATE)
 
-        ## initialize replay buffer
         self.buffer = ReplayBuffer(self.BUFFER_SIZE)
 
         self.hagent = HeuristicAgent()
@@ -251,15 +233,14 @@ class SACagent(object):
 
             # reset episode
             time, episode_reward, done = 0, 0, False
-            # reset the environment and observe the first state
-            if ep < 7000 :
+
+            if ep < 7000:
                 state = self.env.reset_randomized(max_timestep=100)
 
-            else :
+            else:
                 state = self.env.reset()
 
             while not done:
-                # visualize the environment
 
                 state_img, state_dist = state[0], state[1]
                 state_img = np.reshape(cv2.resize(state_img,(84, 84),cv2.INTER_NEAREST), (84, 84)).astype(np.float32) / 100.0
@@ -275,29 +256,23 @@ class SACagent(object):
                     action_c, action_d = self.hagent.step(state_dist)
                     # print("heuristic", action_c[action_d], action_d, action_c)
 
-                if time % 10 == 0 :
+                if time % 10 == 0:
                     print('time = ', time , action_d,  action_c[action_d])
 
                 next_state, reward, done = self.env.step((action_c[action_d], action_d), debug=False)
-
-
 
                 next_state_img, next_state_dist = next_state[0], next_state[1]
                 next_state_img = np.reshape(cv2.resize(next_state_img,(84, 84),cv2.INTER_NEAREST), (84, 84)).astype(np.float32) / 100.0
                 next_state_img = np.stack((next_state_img, next_state_img, next_state_img), axis=2)
                 next_state_dist = np.reshape(next_state_dist, (1,))
 
-
                 self.buffer.add_buffer(state_img, state_dist, action_d, action_c,
                                        reward, next_state_img, next_state_dist, done)
 
+                if self.buffer.buffer_count() > 1000:
 
-                if self.buffer.buffer_count() > 64:  # start train after buffer has some amounts
-
-                    # sample transitions from replay buffer
                     states_img, states_dist, sactions_d, sactions_c, rewards, next_states_img, next_states_dist, dones = self.buffer.sample_batch(self.BATCH_SIZE)
 
-                    # predict target soft Q-values
                     next_mu, next_std, next_ac_d = self.actor(tf.convert_to_tensor(next_states_img, dtype=tf.float32),
                                                               tf.convert_to_tensor(next_states_dist, dtype=tf.float32))
                     next_action_c, next_action_d, next_log_pdf_c,next_log_pdf_d, next_prob_d = self.actor.sample_normal(next_mu, next_std, next_ac_d)
@@ -305,20 +280,17 @@ class SACagent(object):
                     target_qs = self.target_critic([next_states_img, next_states_dist, next_action_c])
                     target_qi = next_prob_d * (target_qs - self.ALPHA * next_prob_d * next_log_pdf_c - self.ALPHA_D * next_log_pdf_d )
 
-                    # compute TD targets
                     y_i = self.q_target(rewards, target_qi.numpy(), dones)
 
-                    # train critic using sampled batch
                     self.critic_learn(tf.convert_to_tensor(states_img, dtype=tf.float32),
                                       tf.convert_to_tensor(states_dist, dtype=tf.float32),
                                       tf.convert_to_tensor(sactions_d, dtype=tf.float32),
                                       tf.convert_to_tensor(sactions_c, dtype=tf.float32),
                                       tf.convert_to_tensor(y_i, dtype=tf.float32))
-                    # train actor
+
                     self.actor_learn(tf.convert_to_tensor(states_img, dtype=tf.float32),
                                      tf.convert_to_tensor(states_dist, dtype=tf.float32))
 
-                    # update both target network
                     self.update_target_network(self.TAU)
 
                 # update current state
@@ -326,28 +298,13 @@ class SACagent(object):
                 episode_reward += reward
                 time += 1
 
-            ## display rewards every episode
-            print('Episode: ', ep+1, 'Time: ', time, 'Reward: ', episode_reward, 'sample size : ',self.buffer.buffer_count())
+            print('Episode: ', ep+1, 'Time: ', time, 'Reward: ', episode_reward, 'sample size : ', self.buffer.buffer_count())
 
             self.save_epi_reward.append(episode_reward)
 
-
-            ## save weights every episode
-            #print('Now save')
             self.actor.save_weights("../save_weights/actor_e_net.h5")
             self.critic.save_weights("../save_weights/critic_e_net.h5")
             # self.env.plot()
 
-
         np.savetxt('../save_weights/epi_reward_sac.txt', self.save_epi_reward)
         print(self.save_epi_reward)
-
-
-    #     np.savetxt('../save_weights/epi_reward_sac.txt', self.save_epi_reward)
-    #     # print(self.save_epi_reward)
-    #
-    #
-    # ## save them to file if done
-    # def plot_result(self):
-    #     plt.plot(self.save_epi_reward)
-    #     plt.show()

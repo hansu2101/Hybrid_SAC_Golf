@@ -29,8 +29,8 @@ def main():
         #                                       tf.convert_to_tensor([state_dist], dtype=tf.float32))
 
         mu, _, ac_d = agent.actor(tf.convert_to_tensor([state_img], dtype=tf.float32), tf.convert_to_tensor([state_dist], dtype=tf.float32))
-        action_c, action_d, _, _, _ = agent.actor.sample_normal(mu, 0, ac_d)
-        action_c, action_d = action_c.numpy()[0], action_d.numpy()[0]
+        action_c = mu.numpy()[0]
+        action_d = np.argmax(tf.nn.softmax(ac_d))
 
         print([action_d, action_c])
 

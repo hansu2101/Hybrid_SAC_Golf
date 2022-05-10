@@ -1,5 +1,5 @@
 
-from hybrid_sac_learn import SACagent
+from hybrid_sac_learn_2 import SACagent
 #from golf_hsac_learn import SACagent
 from golf_env_discrete import GolfEnvDiscrete
 import tensorflow as tf
