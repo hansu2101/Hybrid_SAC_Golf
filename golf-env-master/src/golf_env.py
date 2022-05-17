@@ -6,6 +6,8 @@ import util
 import cv2
 from abc import *
 from scipy.interpolate import interp1d
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 
 class GolfEnv(metaclass=ABCMeta):
@@ -53,24 +55,14 @@ class GolfEnv(metaclass=ABCMeta):
         self.__img_gray = cv2.cvtColor(cv2.imread(self.IMG_PATH), cv2.COLOR_BGR2GRAY)
         self.__area_info = {
             # PIXL   NAME       K_DIST  K_DEV   ON_LAND                     TERM    RWRD
-            -1: ('TEE', 1.0, 1.0, self.OnLandAction.NONE, False, lambda d: -1),
-            70: ('FAREWAY', 1.0, 1.0, self.OnLandAction.NONE, False, lambda d: -1),
-            80: ('GREEN', 1.0, 1.0, self.OnLandAction.NONE, True, lambda d: 3+self.__green_reward_func(d)),
-            50: ('SAND', 0.6, 1.5, self.OnLandAction.NONE, False, lambda d: -1.3),
-            5: ('WATER', 0.4, 1.0, self.OnLandAction.SHORE, False, lambda d: -2),
-            55: ('ROUGH', 0.8, 1.5, self.OnLandAction.NONE, False, lambda d: -1.3),
-            0: ('OB', 1.0, 1.0, self.OnLandAction.ROLLBACK, False, lambda d: -2),
+            -1:     ('TEE',     1.0,    1.0,    self.OnLandAction.NONE,     False,  lambda d: -1),
+            70:     ('FAREWAY', 1.0,    1.0,    self.OnLandAction.NONE,     False,  lambda d: -1),
+            80:     ('GREEN',   1.0,    1.0,    self.OnLandAction.NONE,     True,   lambda d: 3 + self.__green_reward_func(d)),
+            50:     ('SAND',    0.6,    1.5,    self.OnLandAction.NONE,     False,  lambda d: -1.2),
+            5:      ('WATER',   0.4,    1.0,    self.OnLandAction.SHORE,    False,  lambda d: -2),
+            55:     ('ROUGH',   0.8,    1.5,    self.OnLandAction.NONE,     False,  lambda d: -1.2),
+            0:      ('OB',      1.0,    1.0,    self.OnLandAction.ROLLBACK,     False,  lambda d: -3),
         }
-        # self.__area_info = {
-        #     # PIXL   NAME       K_DIST  K_DEV   ON_LAND                     TERM    RWRD
-        #     -1: ('TEE', 1.0, 1.0, self.OnLandAction.NONE, False, lambda d: -d*0.02),
-        #     70: ('FAREWAY', 1.0, 1.0, self.OnLandAction.NONE, False, lambda d: -d*0.02),
-        #     80: ('GREEN', 1.0, 1.0, self.OnLandAction.NONE, True, lambda d: +100 + self.__green_reward_func(d)),
-        #     50: ('SAND', 0.6, 1.5, self.OnLandAction.NONE, False, lambda d: -d*0.02),
-        #     5: ('WATER', 0.4, 1.0, self.OnLandAction.SHORE, False, lambda d: -d*0.02),
-        #     55: ('ROUGH', 0.8, 1.5, self.OnLandAction.NONE, False, lambda d: -d*0.02),
-        #     0: ('OB', 1.0, 1.0, self.OnLandAction.ROLLBACK, False, lambda d: -2 -d*0.02),
-        # }
         self.__green_reward_func = interp1d(np.array([0, 1, 3, 15, 100]), np.array([-1, -1, -2, -3, -3]))
         self.__rng = np.random.default_rng()
 
@@ -102,7 +94,7 @@ class GolfEnv(metaclass=ABCMeta):
 
         return self._state['state_img'], self._state['distance_to_pin']
 
-    def step(self, action, debug=False):
+    def step(self, action, accurate_shots=False, debug=False):
         """
         steps simulator
         :param action: tuple of action(continuous angle(deg), continuous distance(m))
@@ -115,9 +107,13 @@ class GolfEnv(metaclass=ABCMeta):
         # get flight model
         area_info = self.__area_info[self._state['landed_pixel_intensity']]
         dist_coef = area_info[self.AreaInfo.DIST_COEF]
-        dev_coef = area_info[self.AreaInfo.DEV_COEF]
+        dev_coef = math.sqrt(area_info[self.AreaInfo.DEV_COEF])
         distance, dev_x, dev_y = self._get_flight_model(action[1])
         reduced_distance = distance * dist_coef
+
+        # nullify deviations if accurate_shots option is true
+        if accurate_shots:
+            dev_coef = 0.0
 
         # get tf delta of (x,y)
         angle_to_pin = math.atan2(self.PIN_POS[1] - self._state['ball_pos'][1],
@@ -169,7 +165,6 @@ class GolfEnv(metaclass=ABCMeta):
 
             while True:
                 new_ball_pos += from_pin_vector
-                # print(new_ball_pos)
                 if not self.__area_info[self.__get_pixel_on(new_ball_pos)][
                            self.AreaInfo.ON_LAND] == self.OnLandAction.SHORE: break
 

@@ -1,4 +1,5 @@
 import numpy as np
+import random
 
 
 class HeuristicAgent:
@@ -7,7 +8,7 @@ class HeuristicAgent:
         pass
 
     def step(self, state):
-        # distance = state
+        distance = state
 
         # if distance > 300:
         #     club = np.random.randint(0, 5)
@@ -22,5 +23,8 @@ class HeuristicAgent:
 
         club = np.random.randint(0, 20)
 
-        return np.random.uniform(-35, 35, size=20), club
-    ##
+        temp = random.random()
+        angle_temp = -35 + 70 * temp
+        angle = np.ones(20) * angle_temp
+        # np.random.uniform(-35, 35, size=20)
+        return angle, club

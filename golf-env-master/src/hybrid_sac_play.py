@@ -1,5 +1,5 @@
 import gym
-from hybrid_sac_learn import SACagent
+from hybrid_sac_learn_2 import SACagent
 # from golf_hsac_learn import SACagent
 from golf_env_discrete import GolfEnvDiscrete
 import tensorflow as tf
@@ -12,11 +12,12 @@ def main():
     env = GolfEnvDiscrete()
     agent = SACagent(env)
 
-    agent.load_weights('../save_weights/')
+    agent.load_weights('../save_weights/1/')
 
     time = 0
-    state = env.reset()
-    #state = env.reset_randomized()
+    total_reward = 0
+    # state = env.reset()
+    state = env.reset_randomized()
 
     while True:
 
@@ -34,14 +35,15 @@ def main():
 
         print([action_d, action_c])
 
-        next_state, reward, done = env.step((action_c[action_d], action_d), debug=True)
+        next_state, reward, done = env.step((action_c[action_d], action_d), accurate_shots=False, debug=True)
         state = next_state
 
         time += 1
-
+        total_reward += reward
         print('Time: ', time, 'Reward: ', reward)
 
         if done:
+            print('total_reward:', total_reward-3, 'time step:', time)
             env.plot()
             break
 

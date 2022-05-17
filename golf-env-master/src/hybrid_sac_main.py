@@ -5,7 +5,7 @@ from golf_env_discrete import GolfEnvDiscrete
 import tensorflow as tf
 def main():
 
-    max_episode_num = 11000
+    max_episode_num = 10000
     env = GolfEnvDiscrete()
     agent = SACagent(env)
 
