@@ -12,8 +12,8 @@ class ReplayBuffer(object):
         self.count = 0
 
     ## 버퍼에 저장
-    def add_buffer(self, state_img, state_dist, state_club, action_d, action_c, reward, next_state_img, next_state_dist, next_state_club, done):
-        transition = (state_img, state_dist, state_club, action_d, action_c, reward, next_state_img, next_state_dist, next_state_club, done)
+    def add_buffer(self, state_img, state_dist, action_d, action_c, reward, next_state_img, next_state_dist, done):
+        transition = (state_img, state_dist, action_d, action_c, reward, next_state_img, next_state_dist, done)
 
         # 버퍼가 꽉 찼는지 확인
         if self.count < self.buffer_size:
@@ -32,16 +32,14 @@ class ReplayBuffer(object):
         # 상태, 행동, 보상, 다음 상태별로 정리
         states_img = np.asarray([i[0] for i in batch])      # state
         states_dist = np.asarray([i[1] for i in batch])
-        states_club = np.asarray([i[2] for i in batch])
-        actions_d = np.asarray([i[3] for i in batch])
-        actions_c = np.asarray([i[4] for i in batch])
-        rewards = np.asarray([i[5] for i in batch])
-        next_states_img = np.asarray([i[6] for i in batch])
-        next_states_dist = np.asarray([i[7] for i in batch])
-        next_states_club = np.asarray([i[8] for i in batch])
-        dones = np.asarray([i[9] for i in batch])
+        actions_d = np.asarray([i[2] for i in batch])
+        actions_c = np.asarray([i[3] for i in batch])
+        rewards = np.asarray([i[4] for i in batch])
+        next_states_img = np.asarray([i[5] for i in batch])
+        next_states_dist = np.asarray([i[6] for i in batch])
+        dones = np.asarray([i[7] for i in batch])
 
-        return states_img, states_dist, states_club, actions_d, actions_c, rewards, next_states_img, next_states_dist, next_states_club, dones
+        return states_img, states_dist, actions_d, actions_c, rewards, next_states_img, next_states_dist, dones
 
 
     ## 버퍼 사이즈 계산

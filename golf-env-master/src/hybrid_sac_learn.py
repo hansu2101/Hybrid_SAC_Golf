@@ -1,5 +1,5 @@
+
 import numpy as np
-import matplotlib.pyplot as plt
 import cv2
 import tensorflow as tf
 import tensorflow_probability as tfp
@@ -8,9 +8,9 @@ from tensorflow.keras.layers import Input, Dense, Lambda, concatenate, Conv2D, M
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.initializers import RandomUniform
 from keras.applications.efficientnet import EfficientNetB0
+
 from replaybuffer import ReplayBuffer
 from heuristic_agent import HeuristicAgent
-
 
 class Actor(Model):
 
@@ -19,7 +19,7 @@ class Actor(Model):
 
         self.action_dim = action_dim
         self.action_bound = action_bound
-        self.std_bound = [1e-2, 1.0]
+        self.std_bound = [1e-2, 2]
 
         self.e_net = EfficientNetB0(include_top=False, weights=None)
         self.flat = Flatten()
@@ -109,67 +109,70 @@ class SACagent(object):
         ## hyperparameters
         self.GAMMA = 0.99
         self.BATCH_SIZE = 64
-        self.BUFFER_SIZE = 40000
+        self.BUFFER_SIZE = 30000
         self.ACTOR_LEARNING_RATE = 0.0001
         self.CRITIC_LEARNING_RATE = 0.001
-        self.TAU = 0.001
+        self.TAU = 0.0005
         self.ALPHA = 0.5
         self.ALPHA_D = 0.5
 
         self.env = env
-        # get state dimension
         self.state_dim_img = (84, 84, 3)
         self.state_dim_dist = (1,)
-        # get action dimension
         self.action_dim = 20
-        # get action bound
         self.action_bound = 35
 
         ## create actor and critic networks
         self.actor = Actor(self.action_dim, self.action_bound)
 
-        self.critic = Critic(self.action_dim)
-        self.target_critic = Critic(self.action_dim)
-
+        self.critic1 = Critic(self.action_dim)
+        self.target_critic1 = Critic(self.action_dim)
+        self.critic2 = Critic(self.action_dim)
+        self.target_critic2 = Critic(self.action_dim)
 
         state_in_img = Input(self.state_dim_img)
         state_in_dist = Input(self.state_dim_dist)
         action_in = Input(self.action_dim)
 
         self.actor(state_in_img, state_in_dist)
-        self.critic([state_in_img, state_in_dist, action_in])
-        self.target_critic([state_in_img, state_in_dist, action_in])
+        self.critic1([state_in_img, state_in_dist, action_in])
+        self.target_critic1([state_in_img, state_in_dist, action_in])
+        self.critic2([state_in_img, state_in_dist, action_in])
+        self.target_critic2([state_in_img, state_in_dist, action_in])
 
         self.actor.summary()
-        self.critic.summary()
+        self.critic1.summary()
+        self.critic2.summary()
 
         self.actor_opt = Adam(self.ACTOR_LEARNING_RATE)
-        self.critic_opt = Adam(self.CRITIC_LEARNING_RATE)
+        self.critic_opt1 = Adam(self.CRITIC_LEARNING_RATE)
+        self.critic_opt2 = Adam(self.CRITIC_LEARNING_RATE)
 
         self.buffer = ReplayBuffer(self.BUFFER_SIZE)
 
         self.hagent = HeuristicAgent()
 
-        # save the results
         self.save_epi_reward = []
 
-    ## actor policy
     def get_action(self, state_img, state_dist):
         mu, std, ac_d = self.actor(state_img, state_dist)
         action_c, action_d, _ ,_ ,_ = self.actor.sample_normal(mu, std, ac_d)
         return action_c.numpy()[0], action_d.numpy()[0]
 
 
-    ## transfer actor weights to target actor with a tau
     def update_target_network(self, TAU):
-        phi = self.critic.get_weights()
-        target_phi = self.target_critic.get_weights()
-        for i in range(len(phi)):
-            target_phi[i] = TAU * phi[i] + (1 - TAU) * target_phi[i]
-        self.target_critic.set_weights(target_phi)
+        phi1 = self.critic1.get_weights()
+        phi2 = self.critic2.get_weights()
+        target_phi1 = self.target_critic1.get_weights()
+        target_phi2 = self.target_critic2.get_weights()
 
+        for i in range(len(phi1)):
+            target_phi1[i] = TAU * phi1[i] + (1 - TAU) * target_phi1[i]
+            target_phi2[i] = TAU * phi2[i] + (1 - TAU) * target_phi2[i]
 
-    ## single gradient update on a single batch data
+        self.target_critic1.set_weights(target_phi1)
+        self.target_critic2.set_weights(target_phi2)
+
     def critic_learn(self, states_img, states_dist, actions_d, actions_c, q_targets):
         idx = 0
         index = []
@@ -179,23 +182,31 @@ class SACagent(object):
             index.append(tmp)
 
         with tf.GradientTape() as tape:
-            q = self.critic([states_img, states_dist, actions_c], training=True)
-            qgather = tf.gather_nd(q,index)
-            loss = tf.reduce_mean(tf.square(qgather-q_targets))
+            q1 = self.critic1([states_img, states_dist, actions_c], training=True)
+            qgather1 = tf.gather_nd(q1, index)
+            loss1 = tf.reduce_mean(tf.square(qgather1-q_targets))
 
-        grads = tape.gradient(loss, self.critic.trainable_variables)
-        self.critic_opt.apply_gradients(zip(grads, self.critic.trainable_variables))
+        grads1 = tape.gradient(loss1, self.critic1.trainable_variables)
+        self.critic_opt1.apply_gradients(zip(grads1, self.critic1.trainable_variables))
 
+        with tf.GradientTape() as tape:
+            q2 = self.critic2([states_img, states_dist, actions_c], training=True)
+            qgather2 = tf.gather_nd(q2, index)
+            loss2 = tf.reduce_mean(tf.square(qgather2-q_targets))
 
+        grads2 = tape.gradient(loss2, self.critic2.trainable_variables)
+        self.critic_opt2.apply_gradients(zip(grads2, self.critic2.trainable_variables))
 
-    ## train the actor network
     def actor_learn(self, states_img, states_dist):
         with tf.GradientTape() as tape:
             mu, std, ac_d = self.actor(states_img, states_dist, training=True)
             actions_c, actions_d, log_pdfs_c, log_pdfs_d, probs_d = self.actor.sample_normal(mu, std, ac_d)
             log_pdfs_c = tf.squeeze(log_pdfs_c)
             log_pdfs_d = tf.squeeze(log_pdfs_d)
-            soft_q = self.critic([states_img, states_dist, actions_c])
+
+            soft_q1 = self.critic1([states_img, states_dist, actions_c])
+            soft_q2 = self.critic2([states_img, states_dist, actions_c])
+            soft_q = tf.math.minimum(soft_q1, soft_q2)
 
             loss_c = tf.reduce_mean(probs_d * (self.ALPHA * log_pdfs_c * probs_d - soft_q))
             loss_d = tf.reduce_mean(probs_d * (self.ALPHA_D * log_pdfs_d - soft_q))
@@ -205,10 +216,12 @@ class SACagent(object):
         grads = tape.gradient(loss, self.actor.trainable_variables)
         self.actor_opt.apply_gradients(zip(grads, self.actor.trainable_variables))
 
-    ## computing soft Q target
+
     def q_target(self, rewards, q_values, dones):
+
         q_values_Sum = q_values.sum(1)
         y_k = np.asarray(q_values_Sum)
+
         for i in range(q_values.shape[0]): # number of batch
             if dones[i]:
                 y_k[i] = rewards[i]
@@ -217,16 +230,16 @@ class SACagent(object):
         return y_k
 
 
-    ## load actor weights
     def load_weights(self, path):
 
-        self.actor.load_weights(path + 'actor_e_net.h5')
-        self.critic.load_weights(path + 'critic_e_net.h5')
+        self.actor.load_weights(path + 'actor_e_net_a.h5')
+        self.critic1.load_weights(path + 'critic_e_net_q1.h5')
+        self.critic2.load_weights(path + 'critic_e_net_q2.h5')
 
     def train(self, max_episode_num):
 
         # initial transfer model weights to target model network
-        self.load_weights('../save_weights/')
+        self.load_weights('../save_weights/12/')
         self.update_target_network(1.0)
 
         for ep in range(int(max_episode_num)):
@@ -234,8 +247,8 @@ class SACagent(object):
             # reset episode
             time, episode_reward, done = 0, 0, False
 
-            if ep < 7000:
-                state = self.env.reset_randomized(max_timestep=100)
+            if ep > 10000:
+                state = self.env.reset_randomized(max_timestep=50)
 
             else:
                 state = self.env.reset()
@@ -247,17 +260,17 @@ class SACagent(object):
                 state_img = np.stack((state_img, state_img, state_img), axis=2)
                 state_dist = np.reshape(state_dist, (1, ))
 
-                if ep >= 0:  # start train after buffer has some amounts
+                if ep < 10000:
                     action_c, action_d = self.get_action(tf.convert_to_tensor([state_img], dtype=tf.float32),
                                                          tf.convert_to_tensor([state_dist], dtype=tf.float32))
-                    # print("actor", action_c[action_d], action_d,  action_c)
+                    print("actor", action_c[action_d], action_d,  action_c)
 
                 else:
                     action_c, action_d = self.hagent.step(state_dist)
                     # print("heuristic", action_c[action_d], action_d, action_c)
 
-                if time % 10 == 0:
-                    print('time = ', time , action_d,  action_c[action_d])
+                if time % 10 == 0 :
+                    print('time = ', time, action_d,  action_c[action_d])
 
                 next_state, reward, done = self.env.step((action_c[action_d], action_d), debug=False)
 
@@ -277,7 +290,10 @@ class SACagent(object):
                                                               tf.convert_to_tensor(next_states_dist, dtype=tf.float32))
                     next_action_c, next_action_d, next_log_pdf_c,next_log_pdf_d, next_prob_d = self.actor.sample_normal(next_mu, next_std, next_ac_d)
 
-                    target_qs = self.target_critic([next_states_img, next_states_dist, next_action_c])
+                    target_qs1 = self.target_critic1([next_states_img, next_states_dist, next_action_c])
+                    target_qs2 = self.target_critic2([next_states_img, next_states_dist, next_action_c])
+                    target_qs = tf.math.minimum(target_qs1, target_qs2)
+
                     target_qi = next_prob_d * (target_qs - self.ALPHA * next_prob_d * next_log_pdf_c - self.ALPHA_D * next_log_pdf_d )
 
                     y_i = self.q_target(rewards, target_qi.numpy(), dones)
@@ -293,18 +309,18 @@ class SACagent(object):
 
                     self.update_target_network(self.TAU)
 
-                # update current state
                 state = next_state
                 episode_reward += reward
                 time += 1
 
-            print('Episode: ', ep+1, 'Time: ', time, 'Reward: ', episode_reward, 'sample size : ', self.buffer.buffer_count())
+            print('Episode:', ep+1, 'Time:', time, 'Reward:', episode_reward, 'sample size: ', self.buffer.buffer_count())
 
-            self.save_epi_reward.append(episode_reward)
+            #self.save_epi_reward.append(episode_reward)
 
-            self.actor.save_weights("../save_weights/actor_e_net.h5")
-            self.critic.save_weights("../save_weights/critic_e_net.h5")
+            self.actor.save_weights("../save_weights/actor_e_net_a.h5")
+            self.critic1.save_weights("../save_weights/critic_e_net_q1.h5")
+            self.critic2.save_weights("../save_weights/critic_e_net_q2.h5")
             # self.env.plot()
 
-        np.savetxt('../save_weights/epi_reward_sac.txt', self.save_epi_reward)
-        print(self.save_epi_reward)
+        # np.savetxt('../save_weights/epi_reward_sac.txt', self.save_epi_reward)
+        # print(self.save_epi_reward)

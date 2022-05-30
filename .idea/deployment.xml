@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="root@bima315.iptime.org:20000" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
       <paths name="root@0.tcp.ngrok.io:13358">
         <serverdata>
@@ -104,6 +104,13 @@
         <serverdata>
           <mappings>
             <mapping deploy="/content/drive/MyDrive/Colab Notebooks" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@bima315.iptime.org:20000">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/tmp/pycharm_project_882" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>

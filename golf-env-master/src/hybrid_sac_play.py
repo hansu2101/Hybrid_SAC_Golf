@@ -1,41 +1,36 @@
-import gym
-from hybrid_sac_learn_2 import SACagent
-# from golf_hsac_learn import SACagent
-from golf_env_discrete import GolfEnvDiscrete
+
+from hybrid_sac_learn_3 import SACagent
+from golf_env import GolfEnv
 import tensorflow as tf
 import cv2
 import numpy as np
 import util
 
+env = GolfEnv()
+agent = SACagent(env)
+agent.load_weights('../save_weights/')
+
 def main():
-
-    env = GolfEnvDiscrete()
-    agent = SACagent(env)
-
-    agent.load_weights('../save_weights/1/')
 
     time = 0
     total_reward = 0
-    # state = env.reset()
-    state = env.reset_randomized()
+    state = env.reset(randomize_initial_pos=True)
 
     while True:
 
         state_img, state_dist = state[0], state[1]
-        state_img = np.reshape(cv2.resize(state_img, (84, 84), cv2.INTER_NEAREST), (84, 84)).astype(np.float32)/100.0
+        state_img = state_img.astype(np.float32) / 100.0
         state_img = np.stack((state_img, state_img, state_img), axis=2)
         state_dist = np.array(state_dist.reshape(1,))
 
-        # action_c, action_d = agent.get_action(tf.convert_to_tensor([state_img], dtype=tf.float32),
-        #                                       tf.convert_to_tensor([state_dist], dtype=tf.float32))
-
-        mu, _, ac_d = agent.actor(tf.convert_to_tensor([state_img], dtype=tf.float32), tf.convert_to_tensor([state_dist], dtype=tf.float32))
+        mu, _, ac_d = agent.actor(tf.convert_to_tensor([state_img], dtype=tf.float32)
+                                  , tf.convert_to_tensor([state_dist], dtype=tf.float32))
         action_c = mu.numpy()[0]
-        action_d = np.argmax(tf.nn.softmax(ac_d))
+        action_d = np.argmax(ac_d)
 
         print([action_d, action_c])
 
-        next_state, reward, done = env.step((action_c[action_d], action_d), accurate_shots=False, debug=True)
+        next_state, reward, done = env.step((action_c[action_d], action_d), accurate_shots=True, debug=True)
         state = next_state
 
         time += 1
@@ -43,10 +38,11 @@ def main():
         print('Time: ', time, 'Reward: ', reward)
 
         if done:
-            print('total_reward:', total_reward-3, 'time step:', time)
+            print('total_reward:', total_reward, 'time step:', time)
             env.plot()
             break
 
 
 if __name__=="__main__":
-    main()
+    for _ in range (1):
+        main()

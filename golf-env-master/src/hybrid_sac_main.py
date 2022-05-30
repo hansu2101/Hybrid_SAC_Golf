@@ -1,12 +1,11 @@
 
-from hybrid_sac_learn_2 import SACagent
-#from golf_hsac_learn import SACagent
-from golf_env_discrete import GolfEnvDiscrete
+from hybrid_sac_learn_3 import SACagent
+from golf_env import GolfEnv
 import tensorflow as tf
 def main():
 
-    max_episode_num = 10000
-    env = GolfEnvDiscrete()
+    max_episode_num = 100000
+    env = GolfEnv()
     agent = SACagent(env)
 
     with tf.device('/gpu:0'):
