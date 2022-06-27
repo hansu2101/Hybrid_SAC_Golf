@@ -114,6 +114,13 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="root@bima315.iptime.org:20000 (2)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/tmp/pycharm_project_882" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
     </serverData>
     <option name="myAutoUpload" value="ALWAYS" />
   </component>

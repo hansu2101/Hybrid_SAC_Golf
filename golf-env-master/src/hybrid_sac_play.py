@@ -1,12 +1,11 @@
 
 from hybrid_sac_learn_3 import SACagent
-from golf_env import GolfEnv
+from golf_env.src.golf_env import GolfEnv
 import tensorflow as tf
 import cv2
 import numpy as np
-import util
 
-env = GolfEnv()
+env = GolfEnv('sejong')
 agent = SACagent(env)
 agent.load_weights('../save_weights/')
 
@@ -15,7 +14,6 @@ def main():
     time = 0
     total_reward = 0
     state = env.reset(randomize_initial_pos=True)
-
     while True:
 
         state_img, state_dist = state[0], state[1]
@@ -27,8 +25,6 @@ def main():
                                   , tf.convert_to_tensor([state_dist], dtype=tf.float32))
         action_c = mu.numpy()[0]
         action_d = np.argmax(ac_d)
-
-        print([action_d, action_c])
 
         next_state, reward, done = env.step((action_c[action_d], action_d), accurate_shots=True, debug=True)
         state = next_state
@@ -44,5 +40,5 @@ def main():
 
 
 if __name__=="__main__":
-    for _ in range (1):
+    for _ in range (20):
         main()

@@ -1,0 +1,3 @@
+[submodule "golf-env-master/src/golf_env"]
+	path = golf-env-master/src/golf_env
+	url = https://github.com/jinkim31/golf_env.git
