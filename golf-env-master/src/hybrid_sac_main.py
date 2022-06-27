@@ -1,4 +1,4 @@
-from hybrid_sac_learn_3 import SACagent
+from hybrid_sac_learn import SACagent
 from golf_env.src.golf_env import GolfEnv
 import tensorflow as tf
 
